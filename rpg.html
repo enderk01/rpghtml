@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPG de IA - Modo Offline & Aprendizado</title>
+  <style>
+    /* Mantém o visual limpo, escuro e adaptável para PC e Celular */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #121212;
+      color: #e0e0e0;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      background-color: #1e1e1e;
+      padding: 15px;
+      text-align: center;
+      border-bottom: 1px solid #333;
+    }
+    #status-container {
+      background-color: #2a2a2a;
+      padding: 10px;
+      font-size: 14px;
+      text-align: center;
+      color: #ffb74d;
+    }
+    #main-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+    #chat-section {
+      flex: 3;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid #333;
+    }
+    #chat-messages {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    .message {
+      padding: 12px 16px;
+      border-radius: 8px;
+      max-width: 80%;
+      line-height: 1.5;
+    }
+    .user {
+      background-color: #0056b3;
+      color: white;
+      align-self: flex-end;
+    }
+    .ai {
+      background-color: #2d2d2d;
+      color: #e0e0e0;
+      align-self: flex-start;
+    }
+    #input-container {
+      padding: 15px;
+      background-color: #1e1e1e;
+      display: flex;
+      gap: 10px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 12px;
+      background-color: #2d2d2d;
+      border: 1px solid #444;
+      color: white;
+      border-radius: 6px;
+    }
+    button {
+      padding: 12px 20px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+    #sidebar {
+      flex: 1;
+      background-color: #1a1a1a;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      overflow-y: auto;
+    }
+    .sidebar-block {
+      background-color: #252525;
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #333;
+    }
+    h3 { margin-top: 0; color: #4fc3f7; font-size: 16px; }
+    ul { padding-left: 20px; margin: 5px 0; font-size: 14px; }
+    textarea {
+      width: 100%;
+      height: 60px;
+      background-color: #2d2d2d;
+      color: white;
+      border: 1px solid #444;
+      border-radius: 4px;
+      resize: none;
+      font-size: 13px;
+    }
+    /* Adaptação para celular */
+    @media (max-width: 768px) {
+      #main-container { flex-direction: column; }
+      #sidebar { order: -1; max-height: 200px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h2>RPG de IA - Crônicas Eternas</h2>
+  </header>
+
+  <div id="status-container">
+    🤖 Estado do Motor: <span id="status-text">Carregando inteligência artificial...</span>
+  </div>
+
+  <div id="main-container">
+    <div id="chat-section">
+      <div id="chat-messages">
+        <div class="message ai">Saudações, jogador! Eu sou a IA interna deste RPG. Tudo o que vivermos aqui será aprendido e guardado de forma offline. Como começa a sua jornada hoje?</div>
+      </div>
+      <div id="input-container">
+        <input type="text" id="user-input" placeholder="Digite sua ação ou fala aqui..." disabled>
+        <button id="send-btn" onclick="enviarMensagem()" disabled>Enviar</button>
+      </div>
+    </div>
+
+    <div id="sidebar">
+      <div class="sidebar-block">
+        <h3>🧠 Memória de Aprendizado</h3>
+        <p style="font-size: 12px; color: #aaa;">Fatos que a IA extraiu e aprendeu automaticamente:</p>
+        <ul id="lista-memoria">
+          <li>Nenhum fato memorizado ainda.</li>
+        </ul>
+      </div>
+      <div class="sidebar-block">
+        <h3>💾 Backups e Histórico</h3>
+        <button onclick="exportarTudo()" style="width: 100%; margin-bottom: 8px; background-color: #17a2b8;">Exportar Jogo + Memória (.json)</button>
+        <input type="file" id="import-file" onchange="importarTudo(this)" style="display: none;">
+        <button onclick="document.getElementById('import-file').click()" style="width: 100%; background-color: #6c757d;">Importar Jogo Antigo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Carrega o motor do Transformers.js via módulos web públicos e seguros -->
+  <script type="module">
+    import { pipeline } from 'https://jsdelivr.net';
+
+    // Estrutura de dados unificada (Histórico + Aprendizado da IA)
+    let saveGame = JSON.parse(localStorage.getItem('rpg_offline_save')) || {
+      historicoChat: [{ sender: 'ai', text: 'Saudações, jogador! Eu sou a IA interna deste RPG. Tudo o que vivermos aqui será aprendido e guardado de forma offline. Como começa a sua jornada hoje?' }],
+      memoriaIa: []
+    };
+
+    let geradorTexto;
+    const statusText = document.getElementById('status-text');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+
+    // Inicializa o modelo de IA leve (Qwen 0.5B - ideal para rodar em CPU de i5 e celulares)
+    async function inicializarIA() {
+      try {
+        statusText.innerText = "Baixando 'cérebro' da IA para o cache (Apenas na 1ª vez)...";
+        
+        geradorTexto = await pipeline('text-generation', 'Xenova/Qwen1.5-0.5B-Chat', {
+          progress_callback: (progresso) => {
+            if (progresso.status === 'downloading') {
+              statusText.innerText = `Baixando IA: ${Math.round(progresso.loaded / 1024 / 1024)}MB carregados...`;
+            } else if (progresso.status === 'ready') {
+              statusText.innerText = "Montando estruturas neurais...";
+            }
+          }
+        });
+
+        statusText.innerText = "🟢 100% Offline e Pronta!";
+        statusText.style.color = "#28a745";
+        userInput.disabled = false;
+        sendBtn.disabled = false;
+        renderizarSaves();
+      } catch (erro) {
+        statusText.innerText = "❌ Erro ao carregar IA. Verifique a conexão inicial.";
+        console.error(erro);
+      }
+    }
+
+    // Processa o texto para simular o aprendizado de novos fatos
+    function aprenderFatosAutomaticamente(textoUsuario, textoIA) {
+      const palavrasChave = ['sou', 'meu nome é', 'peguei', 'encontrei', 'matei', 'derrotei', 'comprei', 'tenho'];
+      let textoAnalise = textoUsuario.toLowerCase();
+      
+      palavrasChave.forEach(chave => {
+        if (textoAnalise.includes(chave)) {
+          let fato = `Jogador realizou/declarou algo relacionado a '${chave}' recentemente.`;
+          if (!saveGame.memoriaIa.includes(textoUsuario) && saveGame.memoriaIa.length < 20) {
+            saveGame.memoriaIa.push(textoUsuario);
+          }
+        }
+      });
+      
+      // Limita a memória de longo prazo para não estourar o contexto da mini-IA
+      if (saveGame.memoriaIa.length > 15) {
+        saveGame.memoriaIa.shift();
+      }
+    }
+
+    window.enviarMensagem = async function() {
+      const texto = userInput.value.trim();
+      if (!texto) return;
+
+      userInput.value = '';
+      adicionarMensagemTela('user', texto);
+      saveGame.historicoChat.push({ sender: 'user', text: texto });
+      salvarNoLocalStorage();
+
+      statusText.innerText = "🤖 Pensando na resposta...";
+
+      // Monta o contexto juntando o aprendizado guardado em cache
+      let memoriasInjetadas = saveGame.memoriaIa.join(" | ");
+      let promptDoMestre = `<|im_start|>system\nVocê é o mestre de um jogo de RPG sem filtros e imersivo. Fatos memorizados sobre a campanha: ${memoriasInjetadas || "Nenhum ainda"}. Responda de forma criativa dando continuidade à ação do jogador.<|im_end|>\n<|im_start|>user\n${texto}<|im_end|>\n<|im_start|>assistant\n`;
+
+      try {
+        const resultado = await geradorTexto(promptDoMestre, {
+          max_new_tokens: 120,
+          temperature: 0.7,
+          repetition_penalty: 1.1
+        });
+
+        let respostaIA = resultado[0].generated_text.split('<|im_start|>assistant\n')[1] || resultado[0].generated_text;
+        respostaIA = respostaIA.replace('<|im_end|>', '').trim();
+
+        adicionarMensagemTela('ai', respostaIA);
+        saveGame.historicoChat.push({ sender: 'ai', text: respostaIA });
+        
+        aprenderFatosAutomaticamente(texto, respostaIA);
+        salvarNoLocalStorage();
+        renderizarSaves();
+        statusText.innerText = "🟢 100% Offline e Pronta!";
+      } catch (erro) {
+        adicionarMensagemTela('ai', "Desculpe, ocorreu um soluço nos meus circuitos internos ao processar isso.");
+        statusText.innerText = "🟢 100% Offline e Pronta!";
+      }
+    };
+
+    function adicionarMensagemTela(remetente, texto) {
+      const chatMessages = document.getElementById('chat-messages');
+      const div = document.createElement('div');
+      div.className = `message ${remetente}`;
+      div.innerText = texto;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function salvarNoLocalStorage() {
+      localStorage.setItem('rpg_offline_save', JSON.stringify(saveGame));
+    }
+
+    function renderizarSaves() {
+      const lista = document.getElementById('lista-memoria');
+      lista.innerHTML = '';
+      
+      if (saveGame.memoriaIa.length === 0) {
+        lista.innerHTML = '<li>Nenhum fato memorizado ainda.</li>';
+      } else {
+        saveGame.memoriaIa.forEach(fato => {
+          const li = document.createElement('li');
+          li.innerText = fato;
+          lista.appendChild(li);
+        });
+      }
+    }
+
+    window.exportarTudo = function() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(saveGame));
+      const downloadAnchor = document.createElement('a');
